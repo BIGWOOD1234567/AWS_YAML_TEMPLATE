@@ -1,0 +1,67 @@
+    # AWS CloudFormation Template - Static Website Bucket and Windows Bastion Server
+
+AWSTemplateFormatVersion: 2010-09-09
+Parameters:
+  Mykey:
+    Type: "AWS::EC2::KeyPair::KeyName"
+    Description: "Enter the key Name for the Key pair you would like to use"
+    ConstraintDescription: "Must be the name of an existing EC2 KeyPair."
+  MyBucketSuffix:
+    Type: String
+    Description: "Enter a bucket name suffix (4 digits/example-> 1234)"
+Resources:
+  MyInstanceSecurityGroup:
+    Type: "AWS::EC2::SecurityGroup"
+    Properties:
+      GroupName: "My Bastion Server Security Group"
+      GroupDescription: "Enables Remote Desktop protocol"
+      SecurityGroupIngress:
+        - IpProtocol: "tcp"
+          FromPort: "3389"
+          ToPort: "3389"
+          CidrIp: "0.0.0.0/0"
+  MyBastionServerInstance:
+    Type: "AWS::EC2::Instance"
+    Properties:
+      SecurityGroups:
+        - !Ref MyInstanceSecurityGroup
+      KeyName: !Ref Mykey
+      InstanceType: "t2.micro"
+      ImageId: "ami-0c4a11a8d0e503812"    # Microsoft Windows Server 2019 Base (Free Tier Eligible)
+  MyS3Bucket:
+    Type: "AWS::S3::Bucket"
+    Properties:
+      BucketName: !Sub
+        - "zachary-smallwood-${NewBucketName}"
+        - NewBucketName: !Ref MyBucketSuffix
+      AccessControl: "PublicRead"
+      WebsiteConfiguration:
+        IndexDocument: index.html
+        ErrorDocument: error.html
+  MYBucketPolicy:
+      Type: "AWS::S3::BucketPolicy"
+      Properties:
+        PolicyDocument:
+          Id: "MyStaticBucketPolicy"
+          Statement:
+            - Sid: "PublicReadForGetBucketObjects"
+              Effect: "Allow"
+              Principal: "*"
+              Action:
+                - "s3:GetObject"
+                - "s3:ListBucket"
+              Resource:
+                - !Sub "arn:aws:s3:::${MyS3Bucket}"
+                - !Sub "arn:aws:s3:::${MyS3Bucket}/*"
+              Condition:
+                IpAddress:
+                  "aws:SourceIp": !GetAtt
+                    - MyBastionServerInstance
+                    - PublicIp
+        Bucket: !Ref MyS3Bucket
+Outputs:
+  PublicIp:
+    Value: !GetAtt
+      - MyBastionServerInstance
+      - PublicIp
+    Description: Server's PublicIp Address
